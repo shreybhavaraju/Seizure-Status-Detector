@@ -1,3 +1,4 @@
 .env
 Seizure-EEG-Data/
 .DS_Store
+*.npy
