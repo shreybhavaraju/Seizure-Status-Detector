@@ -2,3 +2,4 @@
 Seizure-EEG-Data/
 .DS_Store
 *.npy
+__pycache__/

@@ -293,8 +293,11 @@ def neural_network_pipeline(X_tr, Y_tr, X_v, Y_v, X_t, Y_t):
 # --- THE EXECUTION FLOW ---
 X_train, Y_train, X_val, Y_val, X_test, Y_test = data_loading()
 
+# Optional exploratory plots (open interactive windows that block execution).
+# Uncomment to inspect how the Fourier features separate normal vs. seizure activity.
 #plot_frequency_spectrum(X_train, Y_train)
 #plot_feature_bars(X_train, Y_train)
 
-#skl_pipeline(X_train, Y_train, X_val, Y_val, X_test, Y_test)
+# Run both models so their results can be compared.
+skl_pipeline(X_train, Y_train, X_val, Y_val, X_test, Y_test)
 neural_network_pipeline(X_train, Y_train, X_val, Y_val, X_test, Y_test)
