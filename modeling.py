@@ -3,7 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
-import torch
 from scipy.signal import welch
 
 freq_ranges = {
@@ -29,9 +28,6 @@ def data_loading():
     print(f"Val shapes:   {X_val.shape}, {Y_val.shape}")
     print(f"Test shapes:  {X_test.shape}, {Y_test.shape}")
     return X_train, Y_train, X_val, Y_val, X_test, Y_test
-
-def neural_network_pipeline( X_tr, Y_tr, X_val, Y_val, X_test, Y_test):
-    pass
 
 def skl_pipeline(X_tr, Y_tr, X_v, Y_v, X_t, Y_t):
     print("\n--- Starting Scikit-Learn + Fourier Pipeline ---")
@@ -178,12 +174,127 @@ def plot_feature_bars(X_tr, Y_tr):
     
     plt.show()
 
-# --- THE EXECUTION FLOW ---
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+
+class SeizureCNN(nn.Module):
+    def __init__(self):
+        super(SeizureCNN, self).__init__()
+        
+        # Conv Layer 1 + Batch Norm
+        self.conv1 = nn.Conv1d(in_channels=35, out_channels=16, kernel_size=15, stride=2)
+        self.bn1 = nn.BatchNorm1d(16)
+        self.pool = nn.MaxPool1d(kernel_size=2)
+        
+        # Conv Layer 2 + Batch Norm
+        self.conv2 = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=7)
+        self.bn2 = nn.BatchNorm1d(32)
+        
+        # Adaptive Pool to hold everything steady
+        self.adaptive_pool = nn.AdaptiveAvgPool1d(64)
+        
+        # Linear Layers + Dropout
+        self.fc1 = nn.Linear(32 * 64, 64)
+        self.dropout = nn.Dropout(p=0.3)
+        self.fc2 = nn.Linear(64, 1)
+
+    def forward(self, x):
+        # Layer 1: Conv -> Batch Norm -> ReLU -> Pool
+        x = self.pool(F.relu(self.bn1(self.conv1(x))))
+        
+        # Layer 2: Conv -> Batch Norm -> ReLU -> Pool
+        x = self.pool(F.relu(self.bn2(self.conv2(x))))
+        
+        x = self.adaptive_pool(x)
+        x = x.view(x.size(0), -1) 
+        
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        
+        return self.fc2(x)
+
+def neural_network_pipeline(X_tr, Y_tr, X_v, Y_v, X_t, Y_t):
+    print("\n--- Starting PyTorch Neural Network Pipeline ---")
+    
+    # Z-score normalization using training parameters
+    mean = X_tr.mean()
+    std = X_tr.std()
+    
+    X_tr_scaled = (X_tr - mean) / (std + 1e-6)
+    X_v_scaled = (X_v - mean) / (std + 1e-6)
+    X_t_scaled = (X_t - mean) / (std + 1e-6) # Scale the final test set too!
+    
+    # Convert everything to PyTorch Tensors
+    X_train_t = torch.tensor(X_tr_scaled, dtype=torch.float32)
+    Y_train_t = torch.tensor(Y_tr, dtype=torch.float32).unsqueeze(1)
+    
+    X_val_t = torch.tensor(X_v_scaled, dtype=torch.float32)
+    Y_val_t = torch.tensor(Y_v, dtype=torch.float32).unsqueeze(1)
+    
+    X_test_t = torch.tensor(X_t_scaled, dtype=torch.float32)
+    
+    # Initialize Model, Loss Function, and Optimizer
+    model = SeizureCNN()
+    weight = torch.tensor([25.0])
+    criterion = nn.BCEWithLogitsLoss(pos_weight=weight) 
+    optimizer = optim.Adam(model.parameters(), lr=0.0005)
+    
+    # The Core Training Loop
+    epochs = 30
+    batch_size = 32
+    
+    print(f"Training started for {epochs} epochs...")
+    for epoch in range(epochs):
+        model.train()
+        permutation = torch.randperm(X_train_t.size(0))
+        epoch_loss = 0.0
+        
+        for i in range(0, X_train_t.size(0), batch_size):
+            indices = permutation[i:i+batch_size]
+            batch_x, batch_y = X_train_t[indices], Y_train_t[indices]
+            
+            optimizer.zero_grad()               
+            outputs = model(batch_x)           
+            loss = criterion(outputs, batch_y)  
+            loss.backward()                     
+            optimizer.step()                    
+            
+            epoch_loss += loss.item() * batch_x.size(0)
+            
+        total_epoch_loss = epoch_loss / X_train_t.size(0)
+        
+        # Validation Check
+        model.eval()
+        with torch.no_grad():
+            val_outputs = model(X_val_t)
+            val_loss = criterion(val_outputs, Y_val_t)
+            probabilities = torch.sigmoid(val_outputs)
+            predictions = (probabilities >= 0.5).float()
+            correct = (predictions == Y_val_t).float().sum()
+            val_acc = correct / Y_val_t.size(0)
+            
+        print(f"Epoch {epoch+1:02d}/{epochs} | Train Loss: {total_epoch_loss:.4f} | Val Loss: {val_loss.item():.4f} | Val Acc: {val_acc.item()*100:.2f}%")
+
+    print("\n--- PYTORCH TEST RESULTS (Final Exam: File 5) ---")
+    model.eval()
+    with torch.no_grad():
+        test_outputs = model(X_test_t)
+        test_probabilities = torch.sigmoid(test_outputs)
+        test_predictions = (test_probabilities >= 0.5).float().cpu().numpy()
+        
+    print(f"Accuracy: {accuracy_score(Y_t, test_predictions) * 100:.2f}%")
+    print(classification_report(Y_t, test_predictions))
+    
+    print("\nPyTorch Pipeline Complete!")
+
+# --- THE EXECUTION FLOW ---
 X_train, Y_train, X_val, Y_val, X_test, Y_test = data_loading()
 
-plot_frequency_spectrum(X_train, Y_train)
+#plot_frequency_spectrum(X_train, Y_train)
+#plot_feature_bars(X_train, Y_train)
 
-plot_feature_bars(X_train, Y_train)
-
-skl_pipeline(X_train, Y_train, X_val, Y_val, X_test, Y_test)
+#skl_pipeline(X_train, Y_train, X_val, Y_val, X_test, Y_test)
+neural_network_pipeline(X_train, Y_train, X_val, Y_val, X_test, Y_test)
